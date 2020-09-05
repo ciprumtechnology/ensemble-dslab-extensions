@@ -5,7 +5,7 @@
     "rootDir": "src"
   },
   "include": ["src/*"],
-  "exclude": ["build"],
+  "exclude": ["lib"],
   "references": [
     {
       "path": "../coreutils"
