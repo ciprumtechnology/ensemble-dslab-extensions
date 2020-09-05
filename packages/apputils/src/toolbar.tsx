@@ -1,27 +1,23 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-import { Text } from '@jupyterlab/coreutils';
-import {
-  Button,
-  circleEmptyIcon,
-  circleIcon,
-  classes,
-  LabIcon,
-  refreshIcon,
-  stopIcon
-} from '@jupyterlab/ui-components';
-
-import { IIterator, find, map, some } from '@lumino/algorithm';
-import { CommandRegistry } from '@lumino/commands';
-import { ReadonlyJSONObject } from '@lumino/coreutils';
-import { Message, MessageLoop } from '@lumino/messaging';
-import { AttachedProperty } from '@lumino/properties';
-import { PanelLayout, Widget } from '@lumino/widgets';
-import * as React from 'react';
-
-import { ISessionContext, sessionContextDialogs } from './sessioncontext';
 import { UseSignal, ReactWidget } from './vdom';
+
+import { Button } from '@jupyterlab/ui-components';
+
+import { IIterator, find, map, some } from '@phosphor/algorithm';
+
+import { CommandRegistry } from '@phosphor/commands';
+
+import { Message, MessageLoop } from '@phosphor/messaging';
+
+import { AttachedProperty } from '@phosphor/properties';
+
+import { PanelLayout, Widget } from '@phosphor/widgets';
+
+import { IClientSession } from './clientsession';
+
+import * as React from 'react';
 
 /**
  * The class name added to toolbars.
@@ -47,6 +43,13 @@ const TOOLBAR_SPACER_CLASS = 'jp-Toolbar-spacer';
  * The class name added to toolbar kernel status icon.
  */
 const TOOLBAR_KERNEL_STATUS_CLASS = 'jp-Toolbar-kernelStatus';
+
+/**
+ * The class name added to a busy kernel indicator.
+ */
+const TOOLBAR_BUSY_CLASS = 'jp-FilledCircleIcon';
+
+const TOOLBAR_IDLE_CLASS = 'jp-CircleIcon';
 
 /**
  * A layout for toolbars.
@@ -310,34 +313,12 @@ export class Toolbar<T extends Widget = Widget> extends Widget {
   handleEvent(event: Event): void {
     switch (event.type) {
       case 'click':
-        this.handleClick(event);
+        if (!this.node.contains(document.activeElement) && this.parent) {
+          this.parent.activate();
+        }
         break;
       default:
         break;
-    }
-  }
-
-  /**
-   * Handle a DOM click event.
-   */
-  protected handleClick(event: Event) {
-    // Clicking a label focuses the corresponding control
-    // that is linked with `for` attribute, so let it be.
-    if (event.target instanceof HTMLLabelElement) {
-      const forId = event.target.getAttribute('for');
-      if (forId && this.node.querySelector(`#${forId}`)) {
-        return;
-      }
-    }
-
-    // If this click already focused a control, let it be.
-    if (this.node.contains(document.activeElement)) {
-      return;
-    }
-
-    // Otherwise, activate the parent widget, which may take focus if desired.
-    if (this.parent) {
-      this.parent.activate();
     }
   }
 
@@ -363,13 +344,13 @@ export namespace Toolbar {
   /**
    * Create an interrupt toolbar item.
    */
-  export function createInterruptButton(
-    sessionContext: ISessionContext
-  ): Widget {
+  export function createInterruptButton(session: IClientSession): Widget {
     return new ToolbarButton({
-      icon: stopIcon,
+      iconClassName: 'jp-StopIcon jp-Icon jp-Icon-16',
       onClick: () => {
-        void sessionContext.session?.kernel?.interrupt();
+        if (session.kernel) {
+          session.kernel.interrupt();
+        }
       },
       tooltip: 'Interrupt the kernel'
     });
@@ -378,14 +359,11 @@ export namespace Toolbar {
   /**
    * Create a restart toolbar item.
    */
-  export function createRestartButton(
-    sessionContext: ISessionContext,
-    dialogs?: ISessionContext.IDialogs
-  ): Widget {
+  export function createRestartButton(session: IClientSession): Widget {
     return new ToolbarButton({
-      icon: refreshIcon,
+      iconClassName: 'jp-RefreshIcon jp-Icon jp-Icon-16',
       onClick: () => {
-        void (dialogs ?? sessionContextDialogs).restart(sessionContext);
+        session.restart();
       },
       tooltip: 'Restart the kernel'
     });
@@ -406,18 +384,13 @@ export namespace Toolbar {
    * Create a kernel name indicator item.
    *
    * #### Notes
-   * It will display the `'display_name`' of the session context. It can
-   * handle a change in context or kernel.
+   * It will display the `'display_name`' of the current kernel,
+   * or `'No Kernel!'` if there is no kernel.
+   * It can handle a change in context or kernel.
    */
-  export function createKernelNameItem(
-    sessionContext: ISessionContext,
-    dialogs?: ISessionContext.IDialogs
-  ): Widget {
+  export function createKernelNameItem(session: IClientSession): Widget {
     const el = ReactWidget.create(
-      <Private.KernelNameComponent
-        sessionContext={sessionContext}
-        dialogs={dialogs ?? sessionContextDialogs}
-      />
+      <Private.KernelNameComponent session={session} />
     );
     el.addClass('jp-KernelName');
     return el;
@@ -427,14 +400,13 @@ export namespace Toolbar {
    * Create a kernel status indicator item.
    *
    * #### Notes
-   * It will show a busy status if the kernel status is busy.
+   * It show display a busy status if the kernel status is
+   * not idle.
    * It will show the current status in the node title.
    * It can handle a change to the context or the kernel.
    */
-  export function createKernelStatusItem(
-    sessionContext: ISessionContext
-  ): Widget {
-    return new Private.KernelStatus(sessionContext);
+  export function createKernelStatusItem(session: IClientSession): Widget {
+    return new Private.KernelStatus(session);
   }
 }
 
@@ -448,8 +420,7 @@ export namespace ToolbarButtonComponent {
   export interface IProps {
     className?: string;
     label?: string;
-    icon?: LabIcon.IMaybeResolvable;
-    iconClass?: string;
+    iconClassName?: string;
     iconLabel?: string;
     tooltip?: string;
     onClick?: () => void;
@@ -463,22 +434,15 @@ export namespace ToolbarButtonComponent {
  * @param props - The props for ToolbarButtonComponent.
  */
 export function ToolbarButtonComponent(props: ToolbarButtonComponent.IProps) {
-  // In some browsers, a button click event moves the focus from the main
-  // content to the button (see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#Clicking_and_focus).
-  // We avoid a click event by calling preventDefault in mousedown, and
-  // we bind the button action to `mousedown`.
-  const handleMouseDown = (event: React.MouseEvent) => {
-    // Fire action only when left button is pressed.
-    if (event.button === 0) {
-      event.preventDefault();
-      props.onClick?.();
-    }
+  const handleClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    props.onClick();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     const { key } = event;
     if (key === 'Enter' || key === ' ') {
-      props.onClick?.();
+      props.onClick();
     }
   };
 
@@ -490,21 +454,14 @@ export function ToolbarButtonComponent(props: ToolbarButtonComponent.IProps) {
           : 'jp-ToolbarButtonComponent'
       }
       disabled={props.enabled === false}
-      onMouseDown={handleMouseDown}
+      onClick={handleClick}
       onKeyDown={handleKeyDown}
       title={props.tooltip || props.iconLabel}
       minimal
     >
-      {(props.icon || props.iconClass) && (
-        <LabIcon.resolveReact
-          icon={props.icon}
-          iconClass={
-            // add some extra classes for proper support of icons-as-css-backgorund
-            classes(props.iconClass, 'jp-Icon')
-          }
-          className="jp-ToolbarButtonComponent-icon"
-          tag="span"
-          stylesheet="toolbarButton"
+      {props.iconClassName && (
+        <span
+          className={props.iconClassName + ' jp-ToolbarButtonComponent-icon'}
         />
       )}
       {props.label && (
@@ -550,7 +507,6 @@ export namespace CommandToolbarButtonComponent {
   export interface IProps {
     commands: CommandRegistry;
     id: string;
-    args?: ReadonlyJSONObject;
   }
 }
 
@@ -577,9 +533,9 @@ export function CommandToolbarButtonComponent(
 }
 
 /*
- * Adds the command toolbar button class to the command toolbar widget.
- * @param w Command toolbar button widget.
- */
+  * Adds the command toolbar button class to the command toolbar widget.
+  * @param w Command toolbar button widget.
+  */
 export function addCommandToolbarButtonClass(w: Widget): Widget {
   w.addClass('jp-CommandToolbarButton');
   return w;
@@ -609,31 +565,24 @@ namespace Private {
   export function propsFromCommand(
     options: CommandToolbarButtonComponent.IProps
   ): ToolbarButtonComponent.IProps {
-    let { commands, id, args } = options;
-
-    const iconClass = commands.iconClass(id, args);
-    const iconLabel = commands.iconLabel(id, args);
-    // DEPRECATED: remove _icon when lumino 2.0 is adopted
-    // if icon is aliasing iconClass, don't use it
-    const _icon = commands.icon(id, args);
-    const icon = _icon === iconClass ? undefined : _icon;
-
-    const label = commands.label(id, args);
-    let className = commands.className(id, args);
+    let { commands, id } = options;
+    const iconClassName = commands.iconClass(id);
+    const iconLabel = commands.iconLabel(id);
+    const label = commands.label(id);
+    let className = commands.className(id);
     // Add the boolean state classes.
-    if (commands.isToggled(id, args)) {
-      className += ' lm-mod-toggled';
+    if (commands.isToggled(id)) {
+      className += ' p-mod-toggled';
     }
-    if (!commands.isVisible(id, args)) {
-      className += ' lm-mod-hidden';
+    if (!commands.isVisible(id)) {
+      className += ' p-mod-hidden';
     }
-    const tooltip = commands.caption(id, args) || label || iconLabel;
+    const tooltip = commands.caption(id) || label || iconLabel;
     const onClick = () => {
-      void commands.execute(id, args);
+      commands.execute(id);
     };
-    const enabled = commands.isEnabled(id, args);
-
-    return { className, icon, iconClass, tooltip, onClick, enabled, label };
+    const enabled = commands.isEnabled(id);
+    return { className, iconClassName, tooltip, onClick, enabled, label };
   }
 
   /**
@@ -672,8 +621,7 @@ namespace Private {
      * Interface for KernelNameComponent props.
      */
     export interface IProps {
-      sessionContext: ISessionContext;
-      dialogs: ISessionContext.IDialogs;
+      session: IClientSession;
     }
   }
 
@@ -685,20 +633,17 @@ namespace Private {
    */
 
   export function KernelNameComponent(props: KernelNameComponent.IProps) {
-    const callback = () => {
-      void props.dialogs.selectKernel(props.sessionContext);
-    };
     return (
       <UseSignal
-        signal={props.sessionContext.kernelChanged}
-        initialSender={props.sessionContext}
+        signal={props.session.kernelChanged}
+        initialSender={props.session}
       >
-        {sessionContext => (
+        {session => (
           <ToolbarButtonComponent
             className={TOOLBAR_KERNEL_NAME_CLASS}
-            onClick={callback}
+            onClick={props.session.selectKernel.bind(props.session)}
             tooltip={'Switch kernel'}
-            label={sessionContext?.kernelDisplayName}
+            label={session.kernelDisplayName}
           />
         )}
       </UseSignal>
@@ -712,48 +657,28 @@ namespace Private {
     /**
      * Construct a new kernel status widget.
      */
-    constructor(sessionContext: ISessionContext) {
+    constructor(session: IClientSession) {
       super();
       this.addClass(TOOLBAR_KERNEL_STATUS_CLASS);
-      this._onStatusChanged(sessionContext);
-      sessionContext.statusChanged.connect(this._onStatusChanged, this);
+      this._onStatusChanged(session);
+      session.statusChanged.connect(
+        this._onStatusChanged,
+        this
+      );
     }
 
     /**
      * Handle a status on a kernel.
      */
-    private _onStatusChanged(sessionContext: ISessionContext) {
+    private _onStatusChanged(session: IClientSession) {
       if (this.isDisposed) {
         return;
       }
-
-      let status = sessionContext.kernelDisplayStatus;
-
-      // set the icon
-      if (this._isBusy(status)) {
-        circleIcon.element({
-          container: this.node,
-          title: `Kernel ${Text.titleCase(status)}`,
-
-          stylesheet: 'toolbarButton'
-        });
-      } else {
-        circleEmptyIcon.element({
-          container: this.node,
-          title: `Kernel ${Text.titleCase(status)}`,
-
-          stylesheet: 'toolbarButton'
-        });
-      }
-    }
-
-    /**
-     * Check if status should be shown as busy.
-     */
-    private _isBusy(status: ISessionContext.KernelDisplayStatus): boolean {
-      return (
-        status === 'busy' || status === 'starting' || status === 'restarting'
-      );
+      let status = session.status;
+      this.toggleClass(TOOLBAR_IDLE_CLASS, status === 'idle');
+      this.toggleClass(TOOLBAR_BUSY_CLASS, status !== 'idle');
+      let title = 'Kernel ' + status[0].toUpperCase() + status.slice(1);
+      this.node.title = title;
     }
   }
 }

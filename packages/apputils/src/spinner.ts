@@ -3,9 +3,9 @@
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
 
-import { Message } from '@lumino/messaging';
+import { Message } from '@phosphor/messaging';
 
-import { Widget } from '@lumino/widgets';
+import { Widget } from '@phosphor/widgets';
 
 /**
  * The spinner class.

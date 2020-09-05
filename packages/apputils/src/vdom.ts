@@ -1,13 +1,13 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-import { IDisposable } from '@lumino/disposable';
+import { IDisposable } from '@phosphor/disposable';
 
-import { Message, MessageLoop } from '@lumino/messaging';
+import { Message, MessageLoop } from '@phosphor/messaging';
 
-import { ISignal, Signal } from '@lumino/signaling';
+import { ISignal, Signal } from '@phosphor/signaling';
 
-import { Widget } from '@lumino/widgets';
+import { Widget } from '@phosphor/widgets';
 
 import * as React from 'react';
 
@@ -26,11 +26,11 @@ export abstract class ReactWidget extends Widget {
    * @param element React element to render.
    */
   static create(element: ReactRenderElement): ReactWidget {
-    return new (class extends ReactWidget {
+    return new class extends ReactWidget {
       render() {
         return element;
       }
-    })();
+    }();
   }
 
   /**
@@ -41,7 +41,7 @@ export abstract class ReactWidget extends Widget {
    *
    * Subclasses should define this method and return the root React nodes here.
    */
-  protected abstract render(): ReactRenderElement | null;
+  protected abstract render(): ReactRenderElement;
 
   /**
    * Called to update the state of the widget.
@@ -81,7 +81,7 @@ export abstract class ReactWidget extends Widget {
       // signature.
       if (Array.isArray(vnode)) {
         ReactDOM.render(vnode, this.node, resolve);
-      } else if (vnode) {
+      } else {
         ReactDOM.render(vnode, this.node, resolve);
       }
     });
@@ -95,15 +95,8 @@ export abstract class ReactWidget extends Widget {
  * An abstract ReactWidget with a model.
  */
 export abstract class VDomRenderer<
-  T extends VDomRenderer.IModel | null = null
+  T extends VDomRenderer.IModel | null
 > extends ReactWidget {
-  /**
-   * Create a new VDomRenderer
-   */
-  constructor(model: T extends null ? void : T) {
-    super();
-    this.model = ((model ?? null) as unknown) as T;
-  }
   /**
    * A signal emitted when the model changes.
    */
@@ -114,7 +107,7 @@ export abstract class VDomRenderer<
   /**
    * Set the model and fire changed signals.
    */
-  set model(newValue: T) {
+  set model(newValue: T | null) {
     if (this._model === newValue) {
       return;
     }
@@ -124,7 +117,10 @@ export abstract class VDomRenderer<
     }
     this._model = newValue;
     if (newValue) {
-      newValue.stateChanged.connect(this.update, this);
+      newValue.stateChanged.connect(
+        this.update,
+        this
+      );
     }
     this.update();
     this._modelChanged.emit(void 0);
@@ -133,7 +129,7 @@ export abstract class VDomRenderer<
   /**
    * Get the current model.
    */
-  get model(): T {
+  get model(): T | null {
     return this._model;
   }
 
@@ -141,14 +137,11 @@ export abstract class VDomRenderer<
    * Dispose this widget.
    */
   dispose() {
-    if (this.isDisposed) {
-      return;
-    }
-    this._model = null!;
+    this._model = null;
     super.dispose();
   }
 
-  private _model: T;
+  private _model: T | null;
   private _modelChanged = new Signal<this, void>(this);
 }
 
@@ -230,7 +223,6 @@ export interface IUseSignalState<SENDER, ARGS> {
  *    />
  *  )
  * }
- * ```
  */
 export class UseSignal<SENDER, ARGS> extends React.Component<
   IUseSignalProps<SENDER, ARGS>,

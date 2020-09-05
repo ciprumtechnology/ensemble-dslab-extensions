@@ -3,11 +3,11 @@
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
 
-import { Token } from '@lumino/coreutils';
+import { Token } from '@phosphor/coreutils';
 
-import { IDisposable } from '@lumino/disposable';
+import { IDisposable } from '@phosphor/disposable';
 
-import { CommandPalette } from '@lumino/widgets';
+import { CommandPalette } from '@phosphor/widgets';
 
 /* tslint:disable */
 /**

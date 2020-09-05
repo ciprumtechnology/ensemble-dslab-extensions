@@ -3,13 +3,13 @@
 | Distributed under the terms of the Modified BSD License.
 |----------------------------------------------------------------------------*/
 
-import { JSONExt, ReadonlyPartialJSONObject } from '@lumino/coreutils';
+import { JSONExt, JSONObject } from '@phosphor/coreutils';
 
-import { IDisposable } from '@lumino/disposable';
+import { IDisposable } from '@phosphor/disposable';
 
-import { CommandRegistry } from '@lumino/commands';
+import { CommandRegistry } from '@phosphor/commands';
 
-import { ElementDataset } from '@lumino/virtualdom';
+import { ElementDataset } from '@phosphor/virtualdom';
 
 /**
  * The command data attribute added to nodes that are connected.
@@ -73,7 +73,7 @@ export class CommandLinker implements IDisposable {
   connectNode(
     node: HTMLElement,
     command: string,
-    args?: ReadonlyPartialJSONObject
+    args?: JSONObject
   ): HTMLElement {
     node.setAttribute(`data-${COMMAND_ATTR}`, command);
     if (args !== void 0) {
@@ -154,10 +154,7 @@ export class CommandLinker implements IDisposable {
    * }, 'some text');
    * ```
    */
-  populateVNodeDataset(
-    command: string,
-    args?: ReadonlyPartialJSONObject
-  ): ElementDataset {
+  populateVNodeDataset(command: string, args?: JSONObject): ElementDataset {
     let dataset: ElementDataset;
     if (args !== void 0) {
       dataset = { [ARGS_ATTR]: JSON.stringify(args), [COMMAND_ATTR]: command };
@@ -185,7 +182,7 @@ export class CommandLinker implements IDisposable {
         if (argsValue) {
           args = JSON.parse(argsValue);
         }
-        void this._commands.execute(command, args);
+        this._commands.execute(command, args);
         return;
       }
       target = target.parentElement;

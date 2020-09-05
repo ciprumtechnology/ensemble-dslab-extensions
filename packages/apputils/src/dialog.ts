@@ -1,21 +1,19 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-import { ArrayExt, each, map, toArray } from '@lumino/algorithm';
+import { ArrayExt, each, map, toArray } from '@phosphor/algorithm';
 
-import { PromiseDelegate } from '@lumino/coreutils';
+import { PromiseDelegate } from '@phosphor/coreutils';
 
-import { Message, MessageLoop } from '@lumino/messaging';
+import { Message, MessageLoop } from '@phosphor/messaging';
 
-import { PanelLayout, Panel, Widget } from '@lumino/widgets';
+import { PanelLayout, Panel, Widget } from '@phosphor/widgets';
 
 import * as React from 'react';
 
-import { Styling } from './styling';
-
 import { ReactWidget } from './vdom';
 
-import { WidgetTracker } from './widgettracker';
+import { Styling } from './styling';
 
 /**
  * Create and show a dialog.
@@ -43,36 +41,18 @@ export function showErrorMessage(
   title: string,
   error: any,
   buttons: ReadonlyArray<Dialog.IButton> = [
-    Dialog.okButton({ label: 'Dismiss' })
+    Dialog.okButton({ label: 'DISMISS' })
   ]
 ): Promise<void> {
   console.warn('Showing error:', error);
 
-  // Cache promises to prevent multiple copies of identical dialogs showing
-  // to the user.
-  let body = typeof error === 'string' ? error : error.message;
-  let key = title + '----' + body;
-  let promise = Private.errorMessagePromiseCache.get(key);
-  if (promise) {
-    return promise;
-  } else {
-    let dialogPromise = showDialog({
-      title: title,
-      body: body,
-      buttons: buttons
-    }).then(
-      () => {
-        Private.errorMessagePromiseCache.delete(key);
-      },
-      error => {
-        // TODO: Use .finally() above when supported
-        Private.errorMessagePromiseCache.delete(key);
-        throw error;
-      }
-    );
-    Private.errorMessagePromiseCache.set(key, dialogPromise);
-    return dialogPromise;
-  }
+  return showDialog({
+    title: title,
+    body: error.message || title,
+    buttons: buttons
+  }).then(() => {
+    /* no-op */
+  });
 }
 
 /**
@@ -115,9 +95,6 @@ export class Dialog<T> extends Widget {
 
     this._primary = this._buttonNodes[this._defaultButton];
     this._focusNodeSelector = options.focusNodeSelector;
-
-    // Add new dialogs to the tracker.
-    void Dialog.tracker.add(this);
   }
 
   /**
@@ -228,7 +205,7 @@ export class Dialog<T> extends Widget {
     this._original = document.activeElement as HTMLElement;
     if (this._focusNodeSelector) {
       let body = this.node.querySelector('.jp-Dialog-body');
-      let el = body?.querySelector(this._focusNodeSelector);
+      let el = body.querySelector(this._focusNodeSelector);
 
       if (el) {
         this._primary = el as HTMLElement;
@@ -271,7 +248,6 @@ export class Dialog<T> extends Widget {
     if (!content.contains(event.target as HTMLElement)) {
       event.stopPropagation();
       event.preventDefault();
-      this.reject();
       return;
     }
     for (let buttonNode of this._buttonNodes) {
@@ -360,8 +336,8 @@ export class Dialog<T> extends Widget {
   private _promise: PromiseDelegate<Dialog.IResult<T>> | null;
   private _defaultButton: number;
   private _host: HTMLElement;
-  private _body: Dialog.Body<T>;
-  private _focusNodeSelector: string | undefined = '';
+  private _body: Dialog.BodyType<T>;
+  private _focusNodeSelector = '';
 }
 
 /**
@@ -369,23 +345,55 @@ export class Dialog<T> extends Widget {
  */
 export namespace Dialog {
   /**
-   * The body input types.
+   * The options used to create a dialog.
    */
-  export type Body<T> = IBodyWidget<T> | React.ReactElement<any> | string;
-
-  /**
-   * The header input types.
-   */
-  export type Header = React.ReactElement<any> | string;
-
-  /**
-   * A widget used as a dialog body.
-   */
-  export interface IBodyWidget<T = string> extends Widget {
+  export interface IOptions<T> {
     /**
-     * Get the serialized value of the widget.
+     * The top level text for the dialog.  Defaults to an empty string.
      */
-    getValue?(): T;
+    title: HeaderType;
+
+    /**
+     * The main body element for the dialog or a message to display.
+     * Defaults to an empty string.
+     *
+     * #### Notes
+     * If a widget is given as the body, it will be disposed after the
+     * dialog is resolved.  If the widget has a `getValue()` method,
+     * the method will be called prior to disposal and the value
+     * will be provided as part of the dialog result.
+     * A string argument will be used as raw `textContent`.
+     * All `input` and `select` nodes will be wrapped and styled.
+     */
+    body: BodyType<T>;
+
+    /**
+     * The host element for the dialog. Defaults to `document.body`.
+     */
+    host: HTMLElement;
+
+    /**
+     * The to buttons to display. Defaults to cancel and accept buttons.
+     */
+    buttons: ReadonlyArray<IButton>;
+
+    /**
+     * The index of the default button.  Defaults to the last button.
+     */
+    defaultButton: number;
+
+    /**
+     * A selector for the primary element that should take focus in the dialog.
+     * Defaults to an empty string, causing the [[defaultButton]] to take
+     * focus.
+     */
+    focusNodeSelector: string;
+
+    /**
+     * An optional renderer for dialog items.  Defaults to a shared
+     * default renderer.
+     */
+    renderer: IRenderer;
   }
 
   /**
@@ -429,55 +437,84 @@ export namespace Dialog {
   }
 
   /**
-   * The options used to create a dialog.
+   * The options used to create a button.
    */
-  export interface IOptions<T> {
+  export type ButtonOptions = Partial<IButton>;
+
+  /**
+   * The header input types.
+   */
+  export type HeaderType = React.ReactElement<any> | string;
+
+  /**
+   * The result of a dialog.
+   */
+  export interface IResult<T> {
     /**
-     * The top level text for the dialog.  Defaults to an empty string.
+     * The button that was pressed.
      */
-    title: Header;
+    button: IButton;
 
     /**
-     * The main body element for the dialog or a message to display.
-     * Defaults to an empty string.
-     *
-     * #### Notes
-     * If a widget is given as the body, it will be disposed after the
-     * dialog is resolved.  If the widget has a `getValue()` method,
-     * the method will be called prior to disposal and the value
-     * will be provided as part of the dialog result.
-     * A string argument will be used as raw `textContent`.
-     * All `input` and `select` nodes will be wrapped and styled.
+     * The value retrieved from `.getValue()` if given on the widget.
      */
-    body: Body<T>;
+    value: T | null;
+  }
 
+  /**
+   * A widget used as a dialog body.
+   */
+  export interface IBodyWidget<T = string> extends Widget {
     /**
-     * The host element for the dialog. Defaults to `document.body`.
+     * Get the serialized value of the widget.
      */
-    host: HTMLElement;
+    getValue?(): T;
+  }
 
-    /**
-     * The buttons to display. Defaults to cancel and accept buttons.
-     */
-    buttons: ReadonlyArray<IButton>;
+  /**
+   * The body input types.
+   */
+  export type BodyType<T> = IBodyWidget<T> | React.ReactElement<any> | string;
 
-    /**
-     * The index of the default button.  Defaults to the last button.
-     */
-    defaultButton: number;
+  /**
+   * Create an accept button.
+   */
+  export function okButton(options: ButtonOptions = {}): Readonly<IButton> {
+    options.accept = true;
+    return createButton(options);
+  }
 
-    /**
-     * A selector for the primary element that should take focus in the dialog.
-     * Defaults to an empty string, causing the [[defaultButton]] to take
-     * focus.
-     */
-    focusNodeSelector: string;
+  /**
+   * Create a reject button.
+   */
+  export function cancelButton(options: ButtonOptions = {}): Readonly<IButton> {
+    options.accept = false;
+    return createButton(options);
+  }
 
-    /**
-     * An optional renderer for dialog items.  Defaults to a shared
-     * default renderer.
-     */
-    renderer: IRenderer;
+  /**
+   * Create a warn button.
+   */
+  export function warnButton(options: ButtonOptions = {}): Readonly<IButton> {
+    options.displayType = 'warn';
+    return createButton(options);
+  }
+
+  /**
+   * Create a button item.
+   */
+  export function createButton(value: Dialog.ButtonOptions): Readonly<IButton> {
+    value.accept = value.accept !== false;
+    let defaultLabel = value.accept ? 'OK' : 'CANCEL';
+    return {
+      label: value.label || defaultLabel,
+      iconClass: value.iconClass || '',
+      iconLabel: value.iconLabel || '',
+      caption: value.caption || '',
+      className: value.className || '',
+      accept: value.accept,
+      displayType: value.displayType || 'default'
+    };
   }
 
   /**
@@ -491,7 +528,7 @@ export namespace Dialog {
      *
      * @returns A widget for the dialog header.
      */
-    createHeader(title: Header): Widget;
+    createHeader(title: HeaderType): Widget;
 
     /**
      * Create the body of the dialog.
@@ -500,7 +537,7 @@ export namespace Dialog {
      *
      * @returns A widget for the body.
      */
-    createBody(body: Body<any>): Widget;
+    createBody(body: BodyType<any>): Widget;
 
     /**
      * Create the footer of the dialog.
@@ -522,79 +559,6 @@ export namespace Dialog {
   }
 
   /**
-   * The result of a dialog.
-   */
-  export interface IResult<T> {
-    /**
-     * The button that was pressed.
-     */
-    button: IButton;
-
-    /**
-     * The value retrieved from `.getValue()` if given on the widget.
-     */
-    value: T | null;
-  }
-
-  /**
-   * Create a button item.
-   */
-  export function createButton(value: Partial<IButton>): Readonly<IButton> {
-    value.accept = value.accept !== false;
-    let defaultLabel = value.accept ? 'OK' : 'Cancel';
-    return {
-      label: value.label || defaultLabel,
-      iconClass: value.iconClass || '',
-      iconLabel: value.iconLabel || '',
-      caption: value.caption || '',
-      className: value.className || '',
-      accept: value.accept,
-      displayType: value.displayType || 'default'
-    };
-  }
-
-  /**
-   * Create a reject button.
-   */
-  export function cancelButton(
-    options: Partial<IButton> = {}
-  ): Readonly<IButton> {
-    options.accept = false;
-    return createButton(options);
-  }
-
-  /**
-   * Create an accept button.
-   */
-  export function okButton(options: Partial<IButton> = {}): Readonly<IButton> {
-    options.accept = true;
-    return createButton(options);
-  }
-
-  /**
-   * Create a warn button.
-   */
-  export function warnButton(
-    options: Partial<IButton> = {}
-  ): Readonly<IButton> {
-    options.displayType = 'warn';
-    return createButton(options);
-  }
-
-  /**
-   * Disposes all dialog instances.
-   *
-   * #### Notes
-   * This function should only be used in tests or cases where application state
-   * may be discarded.
-   */
-  export function flush(): void {
-    tracker.forEach(dialog => {
-      dialog.dispose();
-    });
-  }
-
-  /**
    * The default implementation of a dialog renderer.
    */
   export class Renderer {
@@ -605,7 +569,7 @@ export namespace Dialog {
      *
      * @returns A widget for the dialog header.
      */
-    createHeader(title: Header): Widget {
+    createHeader(title: HeaderType): Widget {
       let header: Widget;
       if (typeof title === 'string') {
         header = new Widget({ node: document.createElement('span') });
@@ -625,7 +589,7 @@ export namespace Dialog {
      *
      * @returns A widget for the body.
      */
-    createBody(value: Body<any>): Widget {
+    createBody(value: BodyType<any>): Widget {
       let body: Widget;
       if (typeof value === 'string') {
         body = new Widget({ node: document.createElement('span') });
@@ -754,12 +718,75 @@ export namespace Dialog {
    */
   export const defaultRenderer = new Renderer();
 
+  /** A simple type for prompt widget */
+  type PromptValueType = string | number | boolean;
   /**
-   * The dialog widget tracker.
+   * Create and show a prompt dialog
    */
-  export const tracker = new WidgetTracker<Dialog<any>>({
-    namespace: '@jupyterlab/apputils:Dialog'
-  });
+  class PromptWidget<T extends PromptValueType> extends Widget {
+    constructor(value: T) {
+      let body = document.createElement('div');
+      let input = document.createElement('input');
+      if (typeof value === 'string') {
+        input.type = 'text';
+        if (value) {
+          input.value = value;
+        }
+      }
+      if (typeof value === 'number') {
+        input.type = 'number';
+        if (value) {
+          input.value = value.toFixed(2);
+        }
+      }
+      if (typeof value === 'boolean') {
+        input.type = 'checkbox';
+        input.checked = value;
+      }
+      body.appendChild(input);
+      super({ node: body });
+    }
+
+    /**
+     * Get the input text node.
+     */
+    get inputNode(): HTMLInputElement {
+      return this.node.getElementsByTagName('input')[0] as HTMLInputElement;
+    }
+
+    /**
+     * Get the value of the widget.
+     */
+    getValue(): T {
+      if (this.inputNode.type === 'number') {
+        // In this branch T extends number.
+        return parseFloat(this.inputNode.value) as T;
+      }
+      if (this.inputNode.type === 'checkbox') {
+        // In this branch T extends boolean.
+        return this.inputNode.checked as T;
+      }
+      return this.inputNode.value as T;
+    }
+  }
+
+  /**
+   * Simple dialog to prompt for a value
+   * @param prompt Text to show on the prompt
+   * @param defaultValue Initial value
+   * @returns a Promise which will resolve with the value entered by user.
+   */
+  export function prompt<T extends PromptValueType>(
+    prompt: string,
+    defaultValue: PromptValueType
+  ): Promise<Dialog.IResult<T>> {
+    return showDialog({
+      title: prompt,
+      body: new PromptWidget<T>(defaultValue as T),
+      buttons: [Dialog.cancelButton(), Dialog.okButton()],
+      focusNodeSelector: 'input'
+    });
+  }
 }
 
 /**
@@ -770,8 +797,6 @@ namespace Private {
    * The queue for launching dialogs.
    */
   export let launchQueue: Promise<Dialog.IResult<any>>[] = [];
-
-  export let errorMessagePromiseCache: Map<string, Promise<void>> = new Map();
 
   /**
    * Handle the input options for a dialog.
