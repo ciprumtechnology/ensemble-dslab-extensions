@@ -1,14 +1,14 @@
 {
   "extends": "../../tsconfigbase",
   "compilerOptions": {
-    "outDir": "./",
-    "rootDir": "src"
+    "outDir": "lib",
+    "rootDir": "src",
+    "allowJs": true
   },
   "include": ["src/*"],
   "exclude": [
-    "dist",
-    "./dist/**/*",
-    "./lib/**/*" // This is what fixed it!
+    "lib",
+    "./lib/**/*"
   ],
   "references": [
     {
