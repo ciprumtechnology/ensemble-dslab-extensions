@@ -5,6 +5,17 @@
     "rootDir": "src"
   },
   "include": ["src/*"],
+  "exclude": [
+    "lib",
+    "./lib",
+    "./lib/*",
+    "./lib/**",
+    "./lib/**/*",
+    "./lib/dialog.d.ts",
+    "./lib/dialog.js",
+    "lib/dialog.d.ts",
+    "lib/dialog.js"
+  ],
   "references": [
     {
       "path": "../application"
