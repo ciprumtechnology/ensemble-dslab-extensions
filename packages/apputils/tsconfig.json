@@ -5,6 +5,7 @@
     "rootDir": "src"
   },
   "include": ["src/*"],
+  "exclude": ["lib", "lib/*.ts", "lib/*.js"],
   "references": [
     {
       "path": "../coreutils"
