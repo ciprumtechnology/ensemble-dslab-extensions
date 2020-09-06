@@ -3,11 +3,14 @@
   "compilerOptions": {
     "outDir": "lib",
     "rootDir": "src",
-    "allowJs": true
+    "allowJs": false
   },
   "include": ["src/*"],
   "exclude": [
     "lib",
+    "./lib",
+    "./lib/*",
+    "./lib/**",
     "./lib/**/*"
   ],
   "references": [
