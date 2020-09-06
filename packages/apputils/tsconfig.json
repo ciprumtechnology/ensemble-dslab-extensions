@@ -5,7 +5,11 @@
     "rootDir": "src"
   },
   "include": ["src/*"],
-  "exclude": ["lib", "lib/*.ts", "lib/*.js"],
+  "exclude": [
+    "./plugins/**/*",
+    "./typings/**/*",
+    "./lib/**/*" // This is what fixed it!
+  ],
   "references": [
     {
       "path": "../coreutils"
