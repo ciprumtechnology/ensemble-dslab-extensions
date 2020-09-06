@@ -21,8 +21,8 @@
   "sideEffects": [
     "style/*.css"
   ],
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
+  "main": "index.js",
+  "types": "index",
   "style": "style/index.css",
   "directories": {
     "lib": "lib/"
