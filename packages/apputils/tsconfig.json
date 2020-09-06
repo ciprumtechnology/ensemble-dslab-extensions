@@ -1,13 +1,13 @@
 {
   "extends": "../../tsconfigbase",
   "compilerOptions": {
-    "outDir": "lib",
+    "outDir": "dist",
     "rootDir": "src"
   },
   "include": ["src/*"],
   "exclude": [
-    "./plugins/**/*",
-    "./typings/**/*",
+    "dist",
+    "./dist/**/*",
     "./lib/**/*" // This is what fixed it!
   ],
   "references": [
