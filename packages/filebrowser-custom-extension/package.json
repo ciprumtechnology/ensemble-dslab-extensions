@@ -29,13 +29,11 @@
     "lib": "lib/"
   },
   "scripts": {
-    "build": "tsc",
-    "clean": "rimraf lib tsconfig.tsbuildinfo",
-    "install-ext": "jupyter labextension install . --no-build",
-    "prepare": "jlpm run clean && jlpm run build",
-    "eslint": "eslint . --ext .ts,.tsx --fix",
-    "eslint:check": "eslint . --ext .ts,.tsx",
-    "watch": "tsc -w"
+    "build": "tsc -b",
+    "clean": "rimraf lib",
+    "docs": "typedoc src",
+    "prepublishOnly": "npm run build",
+    "watch": "tsc -b --watch"
   },
   "dependencies": {
     "@jupyterlab/application": "^2.1.0",
